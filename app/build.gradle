@@ -9,6 +9,7 @@
 plugins {
   // Apply the application plugin to add support for building a CLI application in Java.
   id 'application'
+  id 'java'
 }
 
 repositories {
@@ -31,6 +32,7 @@ def urlFile = { url, name ->
 }
 
 dependencies {
+  implementation "com.google.code.gson:gson:2.10"
   implementation urlFile('https://github.com/crawligans/webserver/releases/latest/download/webserver.jar', 'webserver')
   implementation urlFile('https://github.com/crawligans/kvs/releases/latest/download/KVSMaster.jar', 'kvs')
   implementation urlFile('https://github.com/crawligans/flame/releases/latest/download/FlameFlameSubmit.jar', 'flame')
