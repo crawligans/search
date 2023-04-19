@@ -44,6 +44,10 @@ application {
   archivesBaseName 'search'
 }
 
+compileJava {
+  options.debug = project.hasProperty('debug')
+}
+
 applicationDistribution.from('site') {
   into ''
 }

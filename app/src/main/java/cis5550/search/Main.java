@@ -12,6 +12,7 @@ import cis5550.webserver.Server;
 import com.google.gson.Gson;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -66,20 +67,18 @@ public class Main {
       String format = req.queryParams("f");
       int fromIdx =
         req.queryParams("fromIdx") != null ? Integer.parseInt(req.queryParams("fromIdx")) : 0;
-      int n = req.queryParams("n") != null ? Integer.parseInt(req.queryParams("n")) : 50;
       List<String> tokenizedQuery = parseQuery(query).sorted().toList();
-      String queryKey = tokenizedQuery.toString();
+      String queryKey = URLEncoder.encode(tokenizedQuery.toString());
       try {
         FlameSubmit.submit(flame,
-//          Job.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath(),
-          "/home/wu000168/CIS 5550/project/search/app/build/libs/search.jar", Job.class.getName(),
-          new String[]{query});
+          Job.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath(),
+          Job.class.getName(), new String[]{query});
       } catch (FileNotFoundException e) {
         e.printStackTrace();
       }
       Map<String, Object> resultMetadata = toJsonResponse(stream(((Iterable<Row>) () -> {
         try {
-          return kvs.scan(queryKey, String.valueOf(fromIdx), String.valueOf(fromIdx + n));
+          return kvs.scan(queryKey, String.valueOf(fromIdx), null);
         } catch (IOException e) {
           throw new RuntimeException(e);
         }
@@ -109,6 +108,7 @@ public class Main {
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"
                 integrity="sha384-ENjdO4Dr2bkBIFxQpeoTz1HIcje39Wm4jDKdf19U8gI4ddQ3GYNS7NTKfAdVQSZe"
                 crossorigin="anonymous"></script>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.4/font/bootstrap-icons.css">
         <meta property="og:title" content="">
         <meta property="og:type" content="">
         <meta property="og:url" content="">
@@ -126,13 +126,13 @@ public class Main {
 
       <body>
       <div class="px-5 my-4 container-sm">
-        <form class="row g-2 sticky-top-sm my-4" id="form-search">
+        <form class="row g-2 sticky-top-sm my-4" id="form-search" action="/search">
           <div class="col-auto flex-grow-1">
             <label for="query" class="visually-hidden">keywords</label>
-            <input type="text" id="query" class="form-control" placeholder="keywords">
+            <input type="text" id="query" name="query" class="form-control" placeholder="keywords">
           </div>
           <div class="col-auto">
-            <button type="submit" class="btn btn-primary">Search</button>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i></button>
           </div>
         </form>
         <div class="vstack gap-sm-2">

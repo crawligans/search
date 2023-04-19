@@ -13,6 +13,8 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"
           integrity="sha384-ENjdO4Dr2bkBIFxQpeoTz1HIcje39Wm4jDKdf19U8gI4ddQ3GYNS7NTKfAdVQSZe"
           crossorigin="anonymous"></script>
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.4/font/bootstrap-icons.css">
   <meta property="og:title" content="">
   <meta property="og:type" content="">
   <meta property="og:url" content="">
@@ -29,14 +31,19 @@
 </head>
 
 <body>
-<div class="px-5 my-4 container-sm">
-  <form class="row g-2 sticky-top-sm my-4" id="form-search">
+<div class="px-5 my-5 container-sm">
+  <h1 class="sticky-top-sm my-4" style="font-family: 'Open Sans'; font-weight: 600">
+    Crawligans</h1>
+  <form class="row g-2 sticky-top-sm my-4" id="form-search" action="/search">
     <div class="col-auto flex-grow-1">
       <label for="query" class="visually-hidden">keywords</label>
-      <input type="text" id="query" class="form-control" placeholder="keywords">
+      <input type="text" id="query" name="query" class="form-control form-control-lg"
+             placeholder="keywords">
     </div>
     <div class="col-auto">
-      <button type="submit" class="btn btn-primary">Search</button>
+      <button type="submit" class="btn btn-primary btn-lg">
+        <i class="bi bi-search"></i>
+      </button>
     </div>
   </form>
   <div class="vstack gap-sm-2">

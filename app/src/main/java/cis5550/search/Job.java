@@ -11,6 +11,7 @@ import cis5550.flame.FlameRDD;
 import cis5550.kvs.KVSClient;
 import cis5550.kvs.Row;
 import java.io.IOException;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
@@ -22,6 +23,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 public class Job {
+
+  private static final boolean DEBUG = true;
 
   private static final int CACHE_LIFETIME_MINS = 15;
 
@@ -39,36 +42,55 @@ public class Job {
     }
     String query = args[0];
     List<String> tokenizedQuery = parseQuery(query).sorted().toList();
-    String queryKey = tokenizedQuery.toString();
+    String queryKey = URLEncoder.encode(tokenizedQuery.toString(), StandardCharsets.UTF_8);
+    System.out.println(queryKey);
     KVSClient kvsMaster = ctx.getKVS();
     if (!kvsMaster.existsRow("cached", queryKey)) {
       FlameRDD queryRDD = ctx.parallelize(tokenizedQuery);
+      if (DEBUG) {
+        queryRDD.saveAsTable("query");
+      }
       FlamePairRDD urlsRDD = queryRDD.flatMapToPair(
         word -> () -> getIndex(word, ctx.getKVS()).map(url -> url.replaceAll(":(?:\\d*\\s*)*$", ""))
           .map(url -> new FlamePair(url, "1")).iterator());
-      queryRDD.drop();
+      if (DEBUG) {
+        urlsRDD.saveAsTable("urls");
+      } else {
+        queryRDD.drop();
+      }
       FlamePairRDD urlCounts = urlsRDD.foldByKey("0",
         (n1, n2) -> String.valueOf(Integer.parseInt(n1) + Integer.parseInt(n2)));
-      urlsRDD.drop();
-      String invertedRankTable = UUID.randomUUID().toString();
+      if (DEBUG) {
+        urlCounts.saveAsTable("urlCounts");
+      } else {
+        urlsRDD.drop();
+      }
+      String invertedRankTable = !DEBUG ? UUID.randomUUID().toString() : "invertedRanks";
       FlameRDD invertedRanks = urlCounts.flatMap(urlCount -> {
         KVSClient kvs = ctx.getKVS();
         kvs.put(invertedRankTable, String.valueOf(
-          (1 - Double.parseDouble(new String(kvs.get("pageranks", urlCount._1(), "rank"))))
-            / Integer.parseInt(urlCount._2())), "url", urlCount._1());
+          (10 - Double.parseDouble(kvs.getRow("pageranks", urlCount._1()).get("rank")))
+          / Integer.parseInt(urlCount._2())), "url", urlCount._1());
         return Collections::emptyIterator;
       });
-      urlCounts.drop();
+      if (!DEBUG) {
+        urlCounts.drop();
+      }
       int i = 0;
+      int paddingLen = String.valueOf(kvsMaster.count(invertedRankTable)).length() + 1;
       for (Iterator<Row> it = kvsMaster.scan(invertedRankTable); it.hasNext(); i++) {
         Row row = it.next();
         try {
-          kvsMaster.put(queryKey, String.valueOf(i), "url", row.get("url"));
+          kvsMaster.put(queryKey, String.format("%0" + paddingLen + "d", i), "url", row.get("url"));
         } catch (IOException e) {
           throw new RuntimeException(e);
         }
       }
-      invertedRanks.drop();
+      if (!DEBUG) {
+        kvsMaster.delete("invertedRankTable");
+        invertedRanks.drop();
+      }
+      kvsMaster.put("cached", queryKey, "table", queryKey);
     } else {
       FlamePairRDD cacheEntries = new FlamePairRDDImpl((FlameContextImpl) ctx, "cached");
       FlamePairRDD newCacheEntries = cacheEntries.flatMapToPair(ent -> {
