@@ -2,24 +2,16 @@ package cis5550.search;
 
 import static cis5550.search.Utils.parseQuery;
 
-import cis5550.flame.FlameContext;
-import cis5550.flame.FlameContextImpl;
-import cis5550.flame.FlamePair;
-import cis5550.flame.FlamePairRDD;
-import cis5550.flame.FlamePairRDDImpl;
-import cis5550.flame.FlameRDD;
+import cis5550.flame.*;
 import cis5550.kvs.KVSClient;
 import cis5550.kvs.Row;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Job {
@@ -42,54 +34,43 @@ public class Job {
     }
     String query = args[0];
     List<String> tokenizedQuery = parseQuery(query).sorted().toList();
+
+    final int Q_LEN = tokenizedQuery.size();
+    for(int i = 0; i < Q_LEN ; i++ ){
+      tokenizedQuery.set(i, tokenizedQuery.get(i) + "=" + i);
+    }
     String queryKey = URLEncoder.encode(tokenizedQuery.toString(), StandardCharsets.UTF_8);
-    System.out.println(queryKey);
     KVSClient kvsMaster = ctx.getKVS();
     if (!kvsMaster.existsRow("cached", queryKey)) {
-      FlameRDD queryRDD = ctx.parallelize(tokenizedQuery);
-      if (DEBUG) {
-        queryRDD.saveAsTable("query");
-      }
-      FlamePairRDD urlsRDD = queryRDD.flatMapToPair(
-        word -> () -> getIndex(word, ctx.getKVS()).map(url -> url.replaceAll(":(?:\\d*\\s*)*$", ""))
-          .map(url -> new FlamePair(url, "1")).iterator());
-      if (DEBUG) {
-        urlsRDD.saveAsTable("urls");
-      } else {
-        queryRDD.drop();
-      }
-      FlamePairRDD urlCounts = urlsRDD.foldByKey("0",
-        (n1, n2) -> String.valueOf(Integer.parseInt(n1) + Integer.parseInt(n2)));
-      if (DEBUG) {
-        urlCounts.saveAsTable("urlCounts");
-      } else {
-        urlsRDD.drop();
-      }
-      String invertedRankTable = !DEBUG ? UUID.randomUUID().toString() : "invertedRanks";
-      FlameRDD invertedRanks = urlCounts.flatMap(urlCount -> {
-        KVSClient kvs = ctx.getKVS();
-        kvs.put(invertedRankTable, String.valueOf(
-          (10 - Double.parseDouble(kvs.getRow("pageranks", urlCount._1()).get("rank")))
-          / Integer.parseInt(urlCount._2())), "url", urlCount._1());
-        return Collections::emptyIterator;
+      FlameRDD queryTok = ctx.parallelize(tokenizedQuery);
+
+      FlamePairRDD cms = queryTok.flatMapToPair(q-> {
+        final String qWord = q.substring(0, q.lastIndexOf('='));
+        final int idx = Integer.valueOf(q.substring(q.lastIndexOf('=')));
+        return (Iterable<FlamePair>) getIndex(qWord, ctx.getKVS()).map(url ->{
+          int tf = url.substring(url.lastIndexOf(':')).split(" ").length;
+          String urlStr = url.substring(0, url.lastIndexOf(':'));
+          String[] pos = new String[Q_LEN];
+          for(int i = 0; i < pos.length; i++){
+            pos[i] = "0";
+          }
+          pos[idx] = String.valueOf(tf);
+          String kc = Arrays.stream(pos).collect(Collectors.joining(","));
+          return new FlamePair(urlStr, kc);
+        });
       });
-      if (!DEBUG) {
-        urlCounts.drop();
-      }
-      int i = 0;
-      int paddingLen = String.valueOf(kvsMaster.count(invertedRankTable)).length() + 1;
-      for (Iterator<Row> it = kvsMaster.scan(invertedRankTable); it.hasNext(); i++) {
-        Row row = it.next();
-        try {
-          kvsMaster.put(queryKey, String.format("%0" + paddingLen + "d", i), "url", row.get("url"));
-        } catch (IOException e) {
-          throw new RuntimeException(e);
+      String[] initVals = new String[Q_LEN];
+      cms.foldByKey(Arrays.stream(initVals).collect(Collectors.joining(",")), (acc , url) -> {
+        String[] vals = acc.split(",");
+        String[] cld = url.split(",");
+        assert cld.length == vals.length;
+        for(int i = 0; i < cld.length; i++){
+          if(!cld[i].equals("0")){
+            vals[i] = String.valueOf(Integer.valueOf(cld[i]) +  Integer.valueOf(vals[i]));
+          }
         }
-      }
-      if (!DEBUG) {
-        kvsMaster.delete("invertedRankTable");
-        invertedRanks.drop();
-      }
+        return String.join(",", vals);
+      });
       kvsMaster.put("cached", queryKey, "table", queryKey);
     } else {
       FlamePairRDD cacheEntries = new FlamePairRDDImpl((FlameContextImpl) ctx, "cached");
@@ -118,14 +99,13 @@ public class Job {
   }
 
   private static Stream<String> getIndex(String keyword, KVSClient kvsClient) {
-    if (keyword.matches("^\".*\"$")) {
+    /*if (keyword.matches("^\".*\"$")) {
       String kw = keyword.replaceAll("^\"|\"$", "");
       return Arrays.stream(kw.split("\\s")).map(String::translateEscapes)
         .flatMap(w -> getIndex(w, kvsClient)).filter(
           url -> Pattern.compile(Pattern.quote(kw), Pattern.CASE_INSENSITIVE)
             .matcher(getPage(url.replaceAll(":(?:\\d*\\s*)*$", ""), kvsClient)).find());
-    }
-
+    }*/
     try {
       Row entry = kvsClient.getRow("index", keyword);
       if (entry != null) {
@@ -137,5 +117,4 @@ public class Job {
       return Stream.empty();
     }
   }
-
 }
