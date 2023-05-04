@@ -70,7 +70,16 @@ public class Job {
           }
         }
         return String.join(",", vals);
-      });
+      }).flatMapToPair(flamePair -> {
+        String url = flamePair._1();
+        String line = flamePair._2();
+        String[] cvals = line.split(",");
+        for(int i = 0; i < Q_LEN; i++){
+          double j = Double.valueOf(String.valueOf(ctx.getKVS().get("idfRanks", "ic", cvals[i]) )) * Integer.valueOf(cvals[i]);
+          cvals[i] = Double.toString(j);
+        }
+        return Collections.singletonList(new FlamePair(url, String.join(",", cvals)));
+      }).saveAsTable("rankTable");
       kvsMaster.put("cached", queryKey, "table", queryKey);
     } else {
       FlamePairRDD cacheEntries = new FlamePairRDDImpl((FlameContextImpl) ctx, "cached");
