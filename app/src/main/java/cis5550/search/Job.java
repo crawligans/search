@@ -82,12 +82,13 @@ public class Job {
         String line = flamePair._2();
         String[] cvals = line.split(",");
         for (int i = 0; i < Q_LEN; i++) {
-          double j = Double.parseDouble(new String(ctx.getKVS().get("idfRanks", "ic", cvals[i])))
+          double j = Double.parseDouble(new String(ctx.getKVS().get("idfRanks", "IDF", cvals[i])))
                      * Integer.parseInt(cvals[i]);
           cvals[i] = Double.toString(j);
         }
         return Collections.singletonList(new FlamePair(url, String.join(",", cvals)));
       }).saveAsTable("rankTable");
+
       kvsMaster.put("cached", queryKey, "table", queryKey);
       cleanupThreads.schedule(() -> {
         try {
