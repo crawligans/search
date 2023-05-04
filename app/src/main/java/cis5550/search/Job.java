@@ -2,16 +2,25 @@ package cis5550.search;
 
 import static cis5550.search.Utils.parseQuery;
 
-import cis5550.flame.*;
+import cis5550.flame.FlameContext;
+import cis5550.flame.FlameContextImpl;
+import cis5550.flame.FlamePair;
+import cis5550.flame.FlamePairRDD;
+import cis5550.flame.FlamePairRDDImpl;
+import cis5550.flame.FlameRDD;
 import cis5550.kvs.KVSClient;
 import cis5550.kvs.Row;
+import cis5550.tools.Logger;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Job {
@@ -27,46 +36,44 @@ public class Job {
     cleanupThreads.setMaximumPoolSize(4);
   }
 
-  public static void run(FlameContext ctx, String[] args) throws Exception {
+  public static void run(FlameContext ctx0, String[] args) throws Exception {
     if (args.length < 1) {
-      ctx.output("missing query argument");
+      ctx0.output("missing query argument");
       return;
     }
     String query = args[0];
     List<String> tokenizedQuery = parseQuery(query).sorted().toList();
+    String queryKey = URLEncoder.encode(tokenizedQuery.toString(), StandardCharsets.UTF_8);
 
     final int Q_LEN = tokenizedQuery.size();
-    for(int i = 0; i < Q_LEN ; i++ ){
-      tokenizedQuery.set(i, tokenizedQuery.get(i) + "=" + i);
-    }
-    String queryKey = URLEncoder.encode(tokenizedQuery.toString(), StandardCharsets.UTF_8);
+    FlameContextImpl ctx = (FlameContextImpl) ctx0;
     KVSClient kvsMaster = ctx.getKVS();
     if (!kvsMaster.existsRow("cached", queryKey)) {
-      FlameRDD queryTok = ctx.parallelize(tokenizedQuery);
+      FlamePairRDD queryTok = ctx.parallelizePairs(
+        IntStream.range(0, Q_LEN).mapToObj(i -> new FlamePair(
+          tokenizedQuery.get(i), String.valueOf(i))));
 
-      FlamePairRDD cms = queryTok.flatMapToPair(q-> {
-        final String qWord = q.substring(0, q.lastIndexOf('='));
-        final int idx = Integer.valueOf(q.substring(q.lastIndexOf('=')));
-        return (Iterable<FlamePair>) getIndex(qWord, ctx.getKVS()).map(url ->{
+      FlamePairRDD cms = queryTok.flatMapToPair(q -> {
+        final int idx = Integer.parseInt(q._2());
+        return () -> getIndex(q._1(), ctx.getKVS()).map(url -> {
           int tf = url.substring(url.lastIndexOf(':')).split(" ").length;
           String urlStr = url.substring(0, url.lastIndexOf(':'));
           String[] pos = new String[Q_LEN];
-          for(int i = 0; i < pos.length; i++){
-            pos[i] = "0";
-          }
+          Arrays.fill(pos, "0");
           pos[idx] = String.valueOf(tf);
-          String kc = Arrays.stream(pos).collect(Collectors.joining(","));
+          String kc = String.join(",", pos);
           return new FlamePair(urlStr, kc);
-        });
+        }).iterator();
       });
       String[] initVals = new String[Q_LEN];
-      cms.foldByKey(Arrays.stream(initVals).collect(Collectors.joining(",")), (acc , url) -> {
+      Arrays.fill(initVals, "0");
+      cms.foldByKey(String.join(",", initVals), (acc, url) -> {
         String[] vals = acc.split(",");
         String[] cld = url.split(",");
         assert cld.length == vals.length;
-        for(int i = 0; i < cld.length; i++){
-          if(!cld[i].equals("0")){
-            vals[i] = String.valueOf(Integer.valueOf(cld[i]) +  Integer.valueOf(vals[i]));
+        for (int i = 0; i < cld.length; i++) {
+          if (!cld[i].equals("0")) {
+            vals[i] = String.valueOf(Integer.parseInt(cld[i]) + Integer.parseInt(vals[i]));
           }
         }
         return String.join(",", vals);
@@ -74,29 +81,39 @@ public class Job {
         String url = flamePair._1();
         String line = flamePair._2();
         String[] cvals = line.split(",");
-        for(int i = 0; i < Q_LEN; i++){
-          double j = Double.valueOf(String.valueOf(ctx.getKVS().get("idfRanks", "ic", cvals[i]) )) * Integer.valueOf(cvals[i]);
+        for (int i = 0; i < Q_LEN; i++) {
+          double j = Double.parseDouble(new String(ctx.getKVS().get("idfRanks", "ic", cvals[i])))
+                     * Integer.parseInt(cvals[i]);
           cvals[i] = Double.toString(j);
         }
         return Collections.singletonList(new FlamePair(url, String.join(",", cvals)));
       }).saveAsTable("rankTable");
       kvsMaster.put("cached", queryKey, "table", queryKey);
-    } else {
-      FlamePairRDD cacheEntries = new FlamePairRDDImpl((FlameContextImpl) ctx, "cached");
-      FlamePairRDD newCacheEntries = cacheEntries.flatMapToPair(ent -> {
-        if (System.currentTimeMillis() - Long.parseLong(ent._2()) > CACHE_LIFETIME_MINS * 1000) {
-          try {
-            kvsMaster.delete(ent._1());
-          } catch (IOException ignored) {
-          }
-          return Collections::emptyIterator;
-        } else {
-          return List.of(new FlamePair(ent._1(), String.valueOf(System.currentTimeMillis())));
+      cleanupThreads.schedule(() -> {
+        try {
+          refreshCache(ctx);
+        } catch (Exception e) {
+          Logger.getLogger(Job.class).error(e.getMessage(), e);
         }
-      });
-      cacheEntries.drop();
-      newCacheEntries.saveAsTable("cached");
+      }, CACHE_LIFETIME_MINS, TimeUnit.MINUTES);
     }
+  }
+
+  private static void refreshCache(FlameContext ctx) throws Exception {
+    FlamePairRDD cacheEntries = new FlamePairRDDImpl((FlameContextImpl) ctx, "cached");
+    FlamePairRDD newCacheEntries = cacheEntries.flatMapToPair(ent -> {
+      if (System.currentTimeMillis() - Long.parseLong(ent._2()) > CACHE_LIFETIME_MINS * 1000) {
+        try {
+          ctx.getKVS().delete(ent._1());
+        } catch (IOException ignored) {
+        }
+        return Collections::emptyIterator;
+      } else {
+        return List.of(new FlamePair(ent._1(), String.valueOf(System.currentTimeMillis())));
+      }
+    });
+    cacheEntries.drop();
+    newCacheEntries.saveAsTable("cached");
   }
 
   private static String getPage(String url, KVSClient kvsClient) {

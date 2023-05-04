@@ -12,7 +12,6 @@ import cis5550.webserver.Server;
 import com.google.gson.Gson;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -70,9 +69,11 @@ public class Main {
       List<String> tokenizedQuery = parseQuery(query).sorted().toList();
       String queryKey = URLEncoder.encode(tokenizedQuery.toString());
       try {
-        FlameSubmit.submit(flame,
-          Job.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath(),
-          Job.class.getName(), new String[]{query});
+        if (!kvs.existsRow("cached", queryKey)) {
+          FlameSubmit.submit(flame,
+            Job.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath(),
+            Job.class.getName(), new String[]{query});
+        }
       } catch (FileNotFoundException e) {
         e.printStackTrace();
       }
