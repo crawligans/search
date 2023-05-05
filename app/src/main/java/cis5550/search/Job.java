@@ -89,7 +89,7 @@ public class Job {
           Logger.getLogger(Job.class).error(e.getMessage(), e);
         }
       }, CACHE_LIFETIME_MINS, TimeUnit.MINUTES);
-    }
+    //}
   }
 
   private static void refreshCache(FlameContext ctx) throws Exception {
