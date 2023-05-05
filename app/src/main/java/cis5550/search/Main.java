@@ -67,7 +67,7 @@ public class Main {
       int fromIdx =
         req.queryParams("fromIdx") != null ? Integer.parseInt(req.queryParams("fromIdx")) : 0;
       List<String> tokenizedQuery = parseQuery(query).sorted().toList();
-      String queryKey = URLEncoder.encode(tokenizedQuery.toString());
+      String queryKey = Hasher.hash(tokenizedQuery.toString());
       try {
         if (!kvs.existsRow("cached", queryKey)) {
           FlameSubmit.submit(flame,
@@ -170,25 +170,29 @@ public class Main {
       entry.put("url", url);
       try {
         String page = new String(kvs.get("crawl", Hasher.hash(url), "page"));
-        Pattern title = Pattern.compile("<title.*?>(.*)</\\s*title\\s*>");
+        Pattern title = Pattern.compile("<title.*?>(.*)</\\s*?title\\s*?>", Pattern.DOTALL);
         Matcher titleMatcher = title.matcher(page);
         if (titleMatcher.find()) {
-          entry.put("title", titleMatcher.group(1));
+          String ttl = titleMatcher.group(1);
+          entry.put("title", !ttl.isBlank() ? ttl : "untitled page");
         } else {
           entry.put("title", "untitled page");
         }
         Pattern metaDesc = Pattern.compile(
-          "<meta\\s+name=\"description\"\\s+content=(\"(?:\\Q\\\"\\E|[^\"]*)\"|'.*')\\s+/?>(?:</meta>)?");
+          "<meta\\s+name=\"description\"\\s+content=(\"(?:\\Q\\\"\\E|[^\"]*)\"|'.*')\\s+/?>(?:</meta>)?",
+          Pattern.DOTALL);
         Matcher descMatcher = metaDesc.matcher(page);
         if (descMatcher.find()) {
           entry.put("description", descMatcher.group(1));
         } else {
-          Pattern body = Pattern.compile("<body.*?>(.*)</\\s*body\\s*>");
+          Pattern body = Pattern.compile("<body.*?>(.*)</\\s*body\\s*>", Pattern.DOTALL);
           Matcher pageMatcher = body.matcher(page);
           if (pageMatcher.find()) {
             String bodyText = pageMatcher.group(1);
+            String innerText =
+              bodyText.replaceAll("(?s)<.*?>", " ").replaceAll("\\s+", " ");
             entry.put("description",
-              bodyText.replaceAll("<.*?>", " ").replaceAll("\\s+", " ").substring(0, 1024) + "...");
+              innerText.substring(0, Math.min(innerText.length(), 1024)) + "...");
           } else {
             entry.put("description", "not available");
           }

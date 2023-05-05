@@ -13,7 +13,13 @@ public class Utils {
 
   public static Stream<String> parseQuery(String q) {
     return keywords.matcher(URLDecoder.decode(q, StandardCharsets.UTF_8)).results()
-      .map(MatchResult::group);
+      .map(MatchResult::group).map(String::toLowerCase).map(word -> {
+        Stemmer stemmer = new Stemmer();
+        char[] wordArr = word.toCharArray();
+        stemmer.add(wordArr, wordArr.length);
+        stemmer.stem();
+        return stemmer.toString();
+      });
   }
 
 }
