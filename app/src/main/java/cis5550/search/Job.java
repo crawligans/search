@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -117,13 +118,13 @@ public class Job {
   }
 
   private static Stream<String> getIndex(String keyword, KVSClient kvsClient) {
-    /*if (keyword.matches("^\".*\"$")) {
+    if (keyword.matches("^\".*\"$")) {
       String kw = keyword.replaceAll("^\"|\"$", "");
       return Arrays.stream(kw.split("\\s")).map(String::translateEscapes)
         .flatMap(w -> getIndex(w, kvsClient)).filter(
           url -> Pattern.compile(Pattern.quote(kw), Pattern.CASE_INSENSITIVE)
             .matcher(getPage(url.replaceAll(":(?:\\d*\\s*)*$", ""), kvsClient)).find());
-    }*/
+    }
     try {
       Row entry = kvsClient.getRow("index", keyword);
       if (entry != null) {
