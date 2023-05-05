@@ -48,23 +48,29 @@ public class Job {
     final int Q_LEN = tokenizedQuery.size();
     FlameContextImpl ctx = (FlameContextImpl) ctx0;
     KVSClient kvsMaster = ctx.getKVS();
-    if (!kvsMaster.existsRow("cached", queryKey)) {
+    //if (!kvsMaster.existsRow("cached", queryKey)) {
+      //System.out.println("om");
       FlamePairRDD queryTok = ctx.parallelizePairs(
         IntStream.range(0, Q_LEN).mapToObj(i -> new FlamePair(
           tokenizedQuery.get(i), String.valueOf(i))));
 
+      queryTok.saveAsTable("queryTok");
+
       FlamePairRDD cms = queryTok.flatMapToPair(q -> {
+        System.out.println(q);
         final int idx = Integer.parseInt(q._2());
         return () -> getIndex(q._1(), ctx.getKVS()).map(url -> {
+          System.out.println(url);
           int tf = url.substring(url.lastIndexOf(':')).split(" ").length;
           String urlStr = url.substring(0, url.lastIndexOf(':'));
           String[] pos = new String[Q_LEN];
           Arrays.fill(pos, "0");
           pos[idx] = String.valueOf(tf);
-          String kc = String.join(",", pos);
-          return new FlamePair(urlStr, kc);
+          String vals = String.join(",", pos);
+          return new FlamePair(urlStr, vals);
         }).iterator();
       });
+      cms.saveAsTable("cms");
       String[] initVals = new String[Q_LEN];
       Arrays.fill(initVals, "0");
       cms.foldByKey(String.join(",", initVals), (acc, url) -> {
@@ -82,7 +88,9 @@ public class Job {
         String line = flamePair._2();
         String[] cvals = line.split(",");
         for (int i = 0; i < Q_LEN; i++) {
-          double j = Double.parseDouble(new String(ctx.getKVS().get("idfRanks", "IDF", cvals[i])))
+          String qWordAndIndex = tokenizedQuery.get(i);
+          String qWord = qWordAndIndex.substring(qWordAndIndex.indexOf('=')+1);
+          double j = Double.parseDouble(new String(ctx.getKVS().get("idfRanks", qWord , "IDF")))
                      * Integer.parseInt(cvals[i]);
           cvals[i] = Double.toString(j);
         }
@@ -97,7 +105,7 @@ public class Job {
           Logger.getLogger(Job.class).error(e.getMessage(), e);
         }
       }, CACHE_LIFETIME_MINS, TimeUnit.MINUTES);
-    }
+    //}
   }
 
   private static void refreshCache(FlameContext ctx) throws Exception {
