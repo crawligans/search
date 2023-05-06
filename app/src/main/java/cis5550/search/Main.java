@@ -77,7 +77,7 @@ public class Main {
       } catch (FileNotFoundException e) {
         e.printStackTrace();
       }
-      int limit = 100;
+      int limit = 50;
       List<Row> results = stream(((Iterable<Row>) () -> {
         try {
           return kvs.scan(queryKey, String.valueOf(fromIdx), null);
@@ -146,8 +146,9 @@ public class Main {
         <div class="vstack gap-sm-2">
           %s
         </div>
-        <div class="btn-group" role="group" aria-label="Page Navigation">
+        <div class="btn-group" role="group" aria-label="Page Navigation" style="margin-top: 16pt; display: flex">
           %s
+          <span style="flex: 1; text-align:center; padding: 4pt">%s</span>
           %s
         </div>
       </div>
@@ -171,9 +172,11 @@ public class Main {
         """.formatted(entry.get("title"), entry.get("url"), entry.get("url"),
         entry.get("description"))).collect(Collectors.joining("\n")),
       ((int) fetchedMetadata.get("fromIdx")) > 0
-        ? "<button type=\"button\" onclick=\"history.back()\" class=\"btn btn-secondary\">Back</button>"
-        : "", fetchedMetadata.get("nextIdx") != null
-        ? "<button type=\"button\" class=\"btn btn-primary\" href=\"?query=%s&startIdx=%s\">Next</button>".formatted(
+        ? "<a><button type=\"button\" onclick=\"history.back()\" class=\"btn btn-secondary\">Back</button></a>"
+        : "",
+      "Showing Results %d-%d".formatted((int) fetchedMetadata.get("fromIdx") + 1, Integer.parseInt(
+        (String) fetchedMetadata.get("nextIdx"))), fetchedMetadata.get("nextIdx") != null
+        ? "<a href=\"?query=%s&fromIdx=%s\"><button type=\"button\" class=\"btn btn-primary\">Next</button></a>".formatted(
         URLEncoder.encode(query, StandardCharsets.UTF_8), fetchedMetadata.get("nextIdx")) : "");
   }
 

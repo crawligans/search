@@ -95,6 +95,8 @@ public class Job {
           Logger.getLogger(Job.class).error(e.getMessage(), e);
         }
       }, CACHE_LIFETIME_MINS, TimeUnit.MINUTES);
+    } else {
+      refreshCache(ctx);
     }
   }
 
