@@ -19,6 +19,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
@@ -62,8 +63,8 @@ public class Job {
         KVSClient kvs = ctx.getKVS();
         Row tf = kvs.getRow("TF", Hasher.hash(p._2()));
         int maxTf = tf.columns().stream().filter(Predicate.not("__url"::equals)).map(tf::get)
-          .map(Integer::parseInt).max(Integer::compare).orElse(0);
-        int tfTok = Integer.parseInt(tf.get(p._1()));
+          .map(Integer::parseInt).max(Integer::compare).orElse(0); // should not be 0
+        int tfTok = Integer.parseInt(Objects.requireNonNullElse(tf.get(p._1()), "0"));
         double idf = Double.parseDouble(new String(kvs.get("IDF", p._1(), "IDF")));
         return Collections.singleton(
           new FlamePair(p._2(), String.valueOf((a + (1 - a) * tfTok / maxTf) * idf)));

@@ -77,29 +77,36 @@ public class Main {
       } catch (FileNotFoundException e) {
         e.printStackTrace();
       }
-      Map<String, Object> resultMetadata = toJsonResponse(stream(((Iterable<Row>) () -> {
+      int limit = 100;
+      List<Row> results = stream(((Iterable<Row>) () -> {
         try {
           return kvs.scan(queryKey, String.valueOf(fromIdx), null);
         } catch (IOException e) {
           throw new RuntimeException(e);
         }
-      }).spliterator(), false).map(r -> r.get("url")), fromIdx, kvs);
+      }).spliterator(), false).limit(limit + 1).toList();
+      String nextIdx = null;
+      if (results.size() > limit) {
+        nextIdx = results.get(results.size() - 1).key();
+      }
+      Map<String, Object> resultMetadata = toJsonResponse(
+        results.stream().limit(limit).map(r -> r.get("url")), fromIdx, nextIdx, kvs);
       if ("json".equalsIgnoreCase(format)) {
         return new Gson().toJson(resultMetadata);
       } else {
-        return buildPage(resultMetadata);
+        return buildPage(query, resultMetadata);
       }
     });
   }
 
-  private static String buildPage(Map<String, Object> fetchedMetadata) {
+  private static String buildPage(String query, Map<String, Object> fetchedMetadata) {
     return """
       <!doctype html>
       <html class="no-js" lang="">
 
       <head>
         <meta charset="utf-8">
-        <title></title>
+        <title>%s</title>
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css"
@@ -139,6 +146,10 @@ public class Main {
         <div class="vstack gap-sm-2">
           %s
         </div>
+        <div class="btn-group" role="group" aria-label="Page Navigation">
+          %s
+          %s
+        </div>
       </div>
       <script src="js/vendor/modernizr-3.11.2.min.js"></script>
       <script src="js/plugins.js"></script>
@@ -147,7 +158,7 @@ public class Main {
       </body>
 
       </html>
-      """.formatted(
+      """.formatted(query,
       ((List<Map<String, String>>) fetchedMetadata.get("results")).stream().map(entry -> """
           <div>
             <div class="position-relative">
@@ -158,19 +169,27 @@ public class Main {
             </p>
           </div>
         """.formatted(entry.get("title"), entry.get("url"), entry.get("url"),
-        entry.get("description"))).collect(Collectors.joining("\n")));
+        entry.get("description"))).collect(Collectors.joining("\n")),
+      ((int) fetchedMetadata.get("fromIdx")) > 0
+        ? "<button type=\"button\" onclick=\"history.back()\" class=\"btn btn-secondary\">Back</button>"
+        : "", fetchedMetadata.get("nextIdx") != null
+        ? "<button type=\"button\" class=\"btn btn-primary\" href=\"?query=%s&startIdx=%s\">Next</button>".formatted(
+        URLEncoder.encode(query, StandardCharsets.UTF_8), fetchedMetadata.get("nextIdx")) : "");
   }
 
   private static Map<String, Object> toJsonResponse(Stream<String> urls, int fromIdx,
-    KVSClient kvs) {
+    String nextIdx, KVSClient kvs) {
     Map<String, Object> resp = new HashMap<>();
     resp.put("fromIdx", fromIdx);
+    resp.put("nextIdx", nextIdx);
     resp.put("results", urls.map(url -> {
       Map<String, String> entry = new HashMap<>();
       entry.put("url", url);
       try {
         byte[] pageBytes = kvs.get("crawl", Hasher.hash(url), "page");
-        if (pageBytes == null) return null;
+        if (pageBytes == null) {
+          return null;
+        }
         String page = new String(pageBytes);
         Pattern title = Pattern.compile("<title.*?>(.*)</\\s*?title\\s*?>", Pattern.DOTALL);
         Matcher titleMatcher = title.matcher(page);
