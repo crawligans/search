@@ -1,6 +1,7 @@
 package cis5550.search;
 
 import static cis5550.search.Utils.parseQuery;
+import static cis5550.search.Utils.stem;
 
 import cis5550.flame.FlameContext;
 import cis5550.flame.FlameContextImpl;
@@ -89,7 +90,7 @@ public class Job {
           Logger.getLogger(Job.class).error(e.getMessage(), e);
         }
       }, CACHE_LIFETIME_MINS, TimeUnit.MINUTES);
-    //}
+    }
   }
 
   private static void refreshCache(FlameContext ctx) throws Exception {
@@ -126,7 +127,7 @@ public class Job {
             .matcher(getPage(url.replaceAll(":(?:\\d*\\s*)*$", ""), kvsClient)).find());
     }
     try {
-      Row entry = kvsClient.getRow("index", keyword);
+      Row entry = kvsClient.getRow("index", stem(keyword));
       if (entry != null) {
         return entry.columns().stream().map(entry::get).flatMap(e -> Arrays.stream(e.split(",")));
       } else {
