@@ -69,11 +69,9 @@ public class Main {
       List<String> tokenizedQuery = parseQuery(query).sorted().toList();
       String queryKey = Hasher.hash(tokenizedQuery.toString());
       try {
-        if (!kvs.existsRow("cached", queryKey)) {
-          FlameSubmit.submit(flame,
-            Job.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath(),
-            Job.class.getName(), new String[]{query});
-        }
+        FlameSubmit.submit(flame,
+          Job.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath(),
+          Job.class.getName(), new String[]{query});
       } catch (FileNotFoundException e) {
         e.printStackTrace();
       }

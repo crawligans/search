@@ -28,6 +28,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Job {
+  private static final Logger logger = Logger.getLogger(Job.class);
 
   private static final boolean DEBUG = true;
 
@@ -87,7 +88,6 @@ public class Job {
         }
       });
 
-      kvsMaster.put("cached", queryKey, "lastAccessed", String.valueOf(System.currentTimeMillis()));
       cleanupThreads.schedule(() -> {
         try {
           refreshCache(ctx);
@@ -95,26 +95,27 @@ public class Job {
           Logger.getLogger(Job.class).error(e.getMessage(), e);
         }
       }, CACHE_LIFETIME_MINS, TimeUnit.MINUTES);
-    } else {
-      refreshCache(ctx);
     }
+    kvsMaster.put("cached", queryKey, "lastAccessed", String.valueOf(System.currentTimeMillis()));
   }
 
   private static void refreshCache(FlameContext ctx) throws Exception {
-    FlamePairRDD cacheEntries = new FlamePairRDDImpl((FlameContextImpl) ctx, "cached");
-    FlamePairRDD newCacheEntries = cacheEntries.flatMapToPair(ent -> {
-      if (System.currentTimeMillis() - Long.parseLong(ent._2()) > CACHE_LIFETIME_MINS * 1000) {
+    KVSClient kvsClient = ctx.getKVS();
+    kvsClient.rename("cached", "oldCache");
+    kvsClient.scan("cached")
+      .forEachRemaining(ent -> {
         try {
-          ctx.getKVS().delete(ent._1());
-        } catch (IOException ignored) {
+          if (System.currentTimeMillis() - Long.parseLong(ent.get("lastAccessed"))
+              > CACHE_LIFETIME_MINS * 1000) {
+            ctx.getKVS().delete(ent.key());
+          } else {
+            kvsClient.putRow("cached", ent);
+          }
+        } catch (IOException e) {
+          logger.error(e.getMessage(), e);
         }
-        return Collections::emptyIterator;
-      } else {
-        return List.of(new FlamePair(ent._1(), String.valueOf(System.currentTimeMillis())));
-      }
-    });
-    cacheEntries.drop();
-    newCacheEntries.saveAsTable("cached");
+      });
+    kvsClient.delete("oldCache");
   }
 
   private static String getPage(String url, KVSClient kvsClient) {
