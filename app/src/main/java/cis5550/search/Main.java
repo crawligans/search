@@ -169,7 +169,9 @@ public class Main {
       Map<String, String> entry = new HashMap<>();
       entry.put("url", url);
       try {
-        String page = new String(kvs.get("crawl", Hasher.hash(url), "page"));
+        byte[] pageBytes = kvs.get("crawl", Hasher.hash(url), "page");
+        if (pageBytes == null) return null;
+        String page = new String(pageBytes);
         Pattern title = Pattern.compile("<title.*?>(.*)</\\s*?title\\s*?>", Pattern.DOTALL);
         Matcher titleMatcher = title.matcher(page);
         if (titleMatcher.find()) {
