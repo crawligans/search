@@ -59,6 +59,7 @@ public class Job {
           int colIdx = l.lastIndexOf(':');
           return new FlamePair(q, l.substring(0, colIdx));
         }).iterator());
+      queryTokens.drop();
       FlamePairRDD tfIdf = queryPagesPairs.flatMapToPair(p -> {
         KVSClient kvs = ctx.getKVS();
         Row tf = kvs.getRow("TF", Hasher.hash(p._2()));
@@ -69,11 +70,14 @@ public class Job {
         return Collections.singleton(
           new FlamePair(p._2(), String.valueOf((a + (1 - a) * tfTok / maxTf) * idf)));
       });
+      queryPagesPairs.drop();
       FlamePairRDDImpl summedTfIdf = (FlamePairRDDImpl) tfIdf.foldByKey("0.0",
         (s1, s2) -> String.valueOf(Double.parseDouble(s1) + Double.parseDouble(s2)));
+      tfIdf.drop();
       List<String> results = summedTfIdf.stream()
         .sorted(Comparator.comparing(p -> Double.parseDouble(((FlamePair) p)._2())).reversed())
         .map(FlamePair::_1).toList();
+      summedTfIdf.drop();
       String paddingFormatString = "%0" + String.valueOf(results.size()).length() + "d";
       IntStream.range(0, results.size()).forEach(i -> {
         try {
