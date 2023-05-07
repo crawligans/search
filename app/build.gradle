@@ -36,6 +36,7 @@ dependencies {
   implementation urlFile('https://github.com/crawligans/webserver/releases/latest/download/webserver.jar', 'webserver')
   implementation urlFile('https://github.com/crawligans/kvs/releases/latest/download/KVSMaster.jar', 'kvs')
   implementation urlFile('https://github.com/crawligans/flame/releases/latest/download/FlameFlameSubmit.jar', 'flame')
+  implementation 'net.sf.jazzy:jazzy:0.5.2-rtext-1.4.1-2'
 }
 
 application {

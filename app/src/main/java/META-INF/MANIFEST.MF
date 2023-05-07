@@ -1,5 +1,4 @@
 Manifest-Version: 1.0
 Main-Class: cis5550.search.Main
-Class-Path: flame.jar gson-2.10.jar kvs.jar webserver.jar kvs.jar webser
- ver.jar flame.jar
+Class-Path: flame.jar gson-2.10.jar kvs.jar webserver.jar kvs.jar webserver.jar flame.jar jazzy-0.5.2-rtext-1.4.1-2.jar
 
