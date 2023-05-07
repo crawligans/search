@@ -131,7 +131,7 @@ public class Job {
   private static Stream<String> getIndex(String keyword, KVSClient kvsClient) {
     if (keyword.matches("^\".*\"$")) {
       String kw = keyword.replaceAll("^\"|\"$", "");
-      return Arrays.stream(kw.split("\\s")).map(String::translateEscapes)
+      return Arrays.stream(kw.split("\\s+")).map(String::translateEscapes)
         .flatMap(w -> getIndex(w, kvsClient)).filter(
           url -> Pattern.compile(Pattern.quote(kw), Pattern.CASE_INSENSITIVE)
             .matcher(getPage(url.replaceAll(":(?:\\d*\\s*)*$", ""), kvsClient)).find());

@@ -82,7 +82,7 @@ public class Main {
       } catch (FileNotFoundException e) {
         e.printStackTrace();
       }
-      int limit = 50;
+      int limit = 20;
       int total = kvs.count(queryKey);
       List<Row> results = stream(((Iterable<Row>) () -> {
         try {
@@ -95,7 +95,7 @@ public class Main {
       if (results.size() > limit) {
         nextIdx = results.get(results.size() - 1).key();
       }
-      Map<String, Object> resultMetadata = toJsonResponse(
+      Map<String, Object> resultMetadata = toJsonResponse(tokenizedQuery,
         results.stream().limit(limit).map(r -> r.get("url")), fromIdx, nextIdx, total, kvs);
       if ("json".equalsIgnoreCase(format)) {
         return new Gson().toJson(resultMetadata);
@@ -189,8 +189,8 @@ public class Main {
         URLEncoder.encode(query, StandardCharsets.UTF_8), fetchedMetadata.get("nextIdx")) : "");
   }
 
-  private static Map<String, Object> toJsonResponse(Stream<String> urls, int fromIdx,
-    String nextIdx, int totalCount, KVSClient kvs) {
+  private static Map<String, Object> toJsonResponse(List<String> tokenizedQuery,
+    Stream<String> urls, int fromIdx, String nextIdx, int totalCount, KVSClient kvs) {
     Map<String, Object> resp = new HashMap<>();
     resp.put("fromIdx", fromIdx);
     resp.put("nextIdx", nextIdx);
@@ -223,10 +223,15 @@ public class Main {
           Matcher pageMatcher = body.matcher(page);
           if (pageMatcher.find()) {
             String bodyText = pageMatcher.group(1);
-            String innerText =
-              bodyText.replaceAll("(?s)<.*?>", " ").replaceAll("\\s+", " ");
-            entry.put("description",
-              innerText.substring(0, Math.min(innerText.length(), 1024)) + "...");
+            String innerText = bodyText.replaceAll("(?s)<.*?>", " ").replaceAll("\\s+", " ");
+            Pattern keywords = Pattern.compile(tokenizedQuery.stream()
+              .map(s -> s.startsWith("\"") && s.endsWith("\"") ? s.replaceAll("^\"|\"$", "") : s)
+              .collect(Collectors.joining("|")));
+            Matcher kwMatcher = keywords.matcher(innerText);
+            int startIdx = kwMatcher.find() ? Math.max(0, kwMatcher.start() - 64) : 0;
+            entry.put("description", ((startIdx > 0 ? "..." : "") + innerText.substring(startIdx,
+              Math.min(innerText.length(), startIdx + 1024)) + "...").replaceAll(keywords.pattern(),
+              "<b>$0</b>"));
           } else {
             entry.put("description", "not available");
           }
