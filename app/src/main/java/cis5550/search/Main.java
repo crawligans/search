@@ -10,6 +10,7 @@ import cis5550.tools.Hasher;
 import cis5550.webserver.Response.Status;
 import cis5550.webserver.Server;
 import com.google.gson.Gson;
+
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -36,6 +37,8 @@ public class Main {
 
     KVSClient kvs = new KVSClient(args[1]);
     String flame = args[2];
+
+    JazzySpellChecker spellChecker = new JazzySpellChecker();
 
     Server.staticFiles.location(System.getProperty("user.dir"));
     Server.get("/", (req, res) -> {
@@ -68,7 +71,12 @@ public class Main {
         req.queryParams("fromIdx") != null ? Integer.parseInt(req.queryParams("fromIdx")) : 0;
       List<String> tokenizedQuery = parseQuery(query).sorted().toList();
       String queryKey = Hasher.hash(tokenizedQuery.toString());
+      String spellcheckedQuery = null;
       try {
+        spellcheckedQuery = spellChecker.fixSpelling(query);
+          if (spellcheckedQuery.trim().equals(query.trim())) {
+            spellcheckedQuery = null;
+          }
         FlameSubmit.submit(flame,
           Job.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath(),
           Job.class.getName(), new String[]{query});
@@ -92,12 +100,16 @@ public class Main {
       if ("json".equalsIgnoreCase(format)) {
         return new Gson().toJson(resultMetadata);
       } else {
-        return buildPage(query, resultMetadata);
+        return buildPage(query, resultMetadata, spellcheckedQuery);
       }
     });
   }
 
-  private static String buildPage(String query, Map<String, Object> fetchedMetadata) {
+  private static String buildPage(String query, Map<String, Object> fetchedMetadata, String spellcheckedQuery) {
+    String correctedQuery = "";
+    if (spellcheckedQuery != null)
+      correctedQuery = String.format("<p><em>Did you mean</em> <a href=\"/search?query=%s\">%s</a> ?</p>",
+        URLEncoder.encode(spellcheckedQuery), spellcheckedQuery);
     return """
       <!doctype html>
       <html class="no-js" lang="">
@@ -141,7 +153,7 @@ public class Main {
             <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i></button>
           </div>
         </form>
-        <div class="vstack gap-sm-2">
+        <div class="vstack gap-sm-2">"""+correctedQuery+"""
           %s
         </div>
         <div class="btn-group" role="group" aria-label="Page Navigation" style="margin-top: 16pt; display: flex">
