@@ -8,11 +8,10 @@
         </element>
         <element id="module-output" name="search.app.main" />
       </element>
+      <element id="library" level="project" name="Gradle: net.sf.jazzy:jazzy:0.5.2-rtext-1.4.1-2" />
       <element id="file-copy" path="$PROJECT_DIR$/app/build/download/webserver.jar" />
       <element id="file-copy" path="$PROJECT_DIR$/app/build/download/flame.jar" />
       <element id="file-copy" path="$PROJECT_DIR$/app/build/download/kvs.jar" />
-      <element id="file-copy" path="$PROJECT_DIR$/app/build/download/webserver.jar" />
-      <element id="library" level="project" name="Gradle: net.sf.jazzy:jazzy:0.5.2-rtext-1.4.1-2" />
       <element id="library" level="project" name="Gradle: com.google.code.gson:gson:2.10" />
     </root>
   </artifact>

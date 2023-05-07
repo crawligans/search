@@ -36,13 +36,13 @@ dependencies {
   implementation urlFile('https://github.com/crawligans/webserver/releases/latest/download/webserver.jar', 'webserver')
   implementation urlFile('https://github.com/crawligans/kvs/releases/latest/download/KVSMaster.jar', 'kvs')
   implementation urlFile('https://github.com/crawligans/flame/releases/latest/download/FlameFlameSubmit.jar', 'flame')
-  implementation 'net.sf.jazzy:jazzy:0.5.2-rtext-1.4.1-2'
+  implementation group: 'net.sf.jazzy', name: 'jazzy', version: '0.5.2-rtext-1.4.1-2'
 }
 
 application {
   // Define the main class for the application.
   mainClass = 'cis5550.search.Main'
-  archivesBaseName 'search'
+  archivesBaseName = 'search'
 }
 
 compileJava {
