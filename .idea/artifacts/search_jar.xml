@@ -1,18 +1,19 @@
 <component name="ArtifactManager">
-  <artifact name="search:jar">
+  <artifact build-on-make="true" name="search:jar">
     <output-path>$PROJECT_DIR$/out/artifacts/search_jar</output-path>
     <root id="root">
       <element id="archive" name="search.jar">
         <element id="directory" name="META-INF">
-          <element id="file-copy" path="$PROJECT_DIR$/app/src/main/java/META-INF/MANIFEST.MF" />
+          <element id="file-copy" path="$PROJECT_DIR$/META-INF/MANIFEST.MF" />
         </element>
         <element id="module-output" name="search.app.main" />
       </element>
+      <element id="file-copy" path="$PROJECT_DIR$/app/build/download/webserver.jar" />
       <element id="file-copy" path="$PROJECT_DIR$/app/build/download/flame.jar" />
-      <element id="library" level="project" name="Gradle: com.google.code.gson:gson:2.10" />
       <element id="file-copy" path="$PROJECT_DIR$/app/build/download/kvs.jar" />
       <element id="file-copy" path="$PROJECT_DIR$/app/build/download/webserver.jar" />
       <element id="library" level="project" name="Gradle: net.sf.jazzy:jazzy:0.5.2-rtext-1.4.1-2" />
+      <element id="library" level="project" name="Gradle: com.google.code.gson:gson:2.10" />
     </root>
   </artifact>
 </component>

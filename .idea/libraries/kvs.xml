@@ -1,0 +1,12 @@
+<component name="libraryTable">
+  <library name="kvs">
+    <CLASSES>
+      <root url="file://$PROJECT_DIR$/../kvs" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="file://$PROJECT_DIR$/../kvs/app/src/main/java" />
+      <root url="file://$PROJECT_DIR$/../kvs/app/src/test/java" />
+    </SOURCES>
+  </library>
+</component>

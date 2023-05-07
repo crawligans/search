@@ -70,40 +70,42 @@ public class Main {
       int fromIdx =
         req.queryParams("fromIdx") != null ? Integer.parseInt(req.queryParams("fromIdx")) : 0;
       List<String> tokenizedQuery = parseQuery(query).sorted().toList();
-      String queryKey = URLEncoder.encode(tokenizedQuery.toString());
+      String queryKey = Hasher.hash(tokenizedQuery.toString());
       String spellcheckedQuery = null;
       try {
-        if (!kvs.existsRow("cached", queryKey)) {
-          //check query spelling
-
-          spellcheckedQuery = spellChecker.fixSpelling(query);
+        spellcheckedQuery = spellChecker.fixSpelling(query);
           if (spellcheckedQuery.trim().equals(query.trim())) {
             spellcheckedQuery = null;
           }
-
-          FlameSubmit.submit(flame,
-            Job.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath(),
-            Job.class.getName(), new String[]{query});
-        }
+        FlameSubmit.submit(flame,
+          Job.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath(),
+          Job.class.getName(), new String[]{query});
       } catch (FileNotFoundException e) {
         e.printStackTrace();
       }
-      Map<String, Object> resultMetadata = toJsonResponse(stream(((Iterable<Row>) () -> {
+      int limit = 50;
+      List<Row> results = stream(((Iterable<Row>) () -> {
         try {
           return kvs.scan(queryKey, String.valueOf(fromIdx), null);
         } catch (IOException e) {
           throw new RuntimeException(e);
         }
-      }).spliterator(), false).map(r -> r.get("url")), fromIdx, kvs);
+      }).spliterator(), false).limit(limit + 1).toList();
+      String nextIdx = null;
+      if (results.size() > limit) {
+        nextIdx = results.get(results.size() - 1).key();
+      }
+      Map<String, Object> resultMetadata = toJsonResponse(
+        results.stream().limit(limit).map(r -> r.get("url")), fromIdx, nextIdx, kvs);
       if ("json".equalsIgnoreCase(format)) {
         return new Gson().toJson(resultMetadata);
       } else {
-        return buildPage(resultMetadata, spellcheckedQuery);
+        return buildPage(query, resultMetadata, spellcheckedQuery);
       }
     });
   }
 
-  private static String buildPage(Map<String, Object> fetchedMetadata, String spellcheckedQuery) {
+  private static String buildPage(String query, Map<String, Object> fetchedMetadata, String spellcheckedQuery) {
     String correctedQuery = "";
     if (spellcheckedQuery != null)
       correctedQuery = String.format("<p><em>Did you mean</em> <a href=\"/search?query=%s\">%s</a> ?</p>",
@@ -114,7 +116,7 @@ public class Main {
 
       <head>
         <meta charset="utf-8">
-        <title></title>
+        <title>%s</title>
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css"
@@ -154,6 +156,11 @@ public class Main {
         <div class="vstack gap-sm-2">"""+correctedQuery+"""
           %s
         </div>
+        <div class="btn-group" role="group" aria-label="Page Navigation" style="margin-top: 16pt; display: flex">
+          %s
+          <span style="flex: 1; text-align:center; padding: 4pt">%s</span>
+          %s
+        </div>
       </div>
       <script src="js/vendor/modernizr-3.11.2.min.js"></script>
       <script src="js/plugins.js"></script>
@@ -162,7 +169,7 @@ public class Main {
       </body>
 
       </html>
-      """.formatted(
+      """.formatted(query,
       ((List<Map<String, String>>) fetchedMetadata.get("results")).stream().map(entry -> """
           <div>
             <div class="position-relative">
@@ -173,37 +180,53 @@ public class Main {
             </p>
           </div>
         """.formatted(entry.get("title"), entry.get("url"), entry.get("url"),
-        entry.get("description"))).collect(Collectors.joining("\n")));
+        entry.get("description"))).collect(Collectors.joining("\n")),
+      ((int) fetchedMetadata.get("fromIdx")) > 0
+        ? "<a><button type=\"button\" onclick=\"history.back()\" class=\"btn btn-secondary\">Back</button></a>"
+        : "",
+      "Showing Results %d-%d".formatted((int) fetchedMetadata.get("fromIdx") + 1, Integer.parseInt(
+        (String) fetchedMetadata.get("nextIdx"))), fetchedMetadata.get("nextIdx") != null
+        ? "<a href=\"?query=%s&fromIdx=%s\"><button type=\"button\" class=\"btn btn-primary\">Next</button></a>".formatted(
+        URLEncoder.encode(query, StandardCharsets.UTF_8), fetchedMetadata.get("nextIdx")) : "");
   }
 
   private static Map<String, Object> toJsonResponse(Stream<String> urls, int fromIdx,
-    KVSClient kvs) {
+    String nextIdx, KVSClient kvs) {
     Map<String, Object> resp = new HashMap<>();
     resp.put("fromIdx", fromIdx);
+    resp.put("nextIdx", nextIdx);
     resp.put("results", urls.map(url -> {
       Map<String, String> entry = new HashMap<>();
       entry.put("url", url);
       try {
-        String page = new String(kvs.get("crawl", Hasher.hash(url), "page"));
-        Pattern title = Pattern.compile("<title.*?>(.*)</\\s*title\\s*>");
+        byte[] pageBytes = kvs.get("crawl", Hasher.hash(url), "page");
+        if (pageBytes == null) {
+          return null;
+        }
+        String page = new String(pageBytes);
+        Pattern title = Pattern.compile("<title.*?>(.*)</\\s*?title\\s*?>", Pattern.DOTALL);
         Matcher titleMatcher = title.matcher(page);
         if (titleMatcher.find()) {
-          entry.put("title", titleMatcher.group(1));
+          String ttl = titleMatcher.group(1);
+          entry.put("title", !ttl.isBlank() ? ttl : "untitled page");
         } else {
           entry.put("title", "untitled page");
         }
         Pattern metaDesc = Pattern.compile(
-          "<meta\\s+name=\"description\"\\s+content=(\"(?:\\Q\\\"\\E|[^\"]*)\"|'.*')\\s+/?>(?:</meta>)?");
+          "<meta\\s+name=\"description\"\\s+content=(\"(?:\\Q\\\"\\E|[^\"]*)\"|'.*')\\s+/?>(?:</meta>)?",
+          Pattern.DOTALL);
         Matcher descMatcher = metaDesc.matcher(page);
         if (descMatcher.find()) {
           entry.put("description", descMatcher.group(1));
         } else {
-          Pattern body = Pattern.compile("<body.*?>(.*)</\\s*body\\s*>");
+          Pattern body = Pattern.compile("<body.*?>(.*)</\\s*body\\s*>", Pattern.DOTALL);
           Matcher pageMatcher = body.matcher(page);
           if (pageMatcher.find()) {
             String bodyText = pageMatcher.group(1);
+            String innerText =
+              bodyText.replaceAll("(?s)<.*?>", " ").replaceAll("\\s+", " ");
             entry.put("description",
-              bodyText.replaceAll("<.*?>", " ").replaceAll("\\s+", " ").substring(0, 1024) + "...");
+              innerText.substring(0, Math.min(innerText.length(), 1024)) + "...");
           } else {
             entry.put("description", "not available");
           }
