@@ -1,19 +1,30 @@
 package cis5550.search;
 
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.util.regex.MatchResult;
+import java.io.IOException;
+import java.io.StreamTokenizer;
+import java.io.StringReader;
+import java.util.Objects;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 public class Utils {
 
-  private static final Pattern keywords = Pattern.compile(
-    "(?<=\\b)(\"(?:\\Q\\\"\\E|[^\"])+\"|[-\\w]+)(?=\\b)");
+  private static final Pattern quoted = Pattern.compile(
+    "(?<=\\b)\"(?:\\Q\\\"\\E|[^\"])*?\"(?=\\b)");
 
   public static Stream<String> parseQuery(String q) {
-    return keywords.matcher(URLDecoder.decode(q, StandardCharsets.UTF_8)).results()
-      .map(MatchResult::group).map(String::toLowerCase);
+    StreamTokenizer tokenizer = new StreamTokenizer(new StringReader(q));
+    tokenizer.quoteChar('"');
+    tokenizer.lowerCaseMode(true);
+    return Stream.generate(() -> {
+      try {
+        tokenizer.nextToken();
+        return tokenizer.ttype == '"' ? '"' + tokenizer.sval + '"' : tokenizer.sval;
+      } catch (IOException e) {
+        return "";
+      }
+    }).takeWhile(Objects::nonNull).filter(Predicate.not(String::isBlank));
   }
 
   public static String stem(String word) {

@@ -183,7 +183,8 @@ public class Main {
       ((int) fetchedMetadata.get("fromIdx")) > 0
         ? "<a><button type=\"button\" onclick=\"history.back()\" class=\"btn btn-secondary\">Back</button></a>"
         : "", "Showing Results %d-%d of %d".formatted((int) fetchedMetadata.get("fromIdx") + 1,
-        Integer.parseInt((String) Objects.requireNonNullElse(fetchedMetadata.get("nextIdx"), "0")),
+        Integer.parseInt((String) Objects.requireNonNullElse(fetchedMetadata.get("nextIdx"),
+          String.valueOf(fetchedMetadata.get("totalCount")))),
         (int) fetchedMetadata.get("totalCount")), fetchedMetadata.get("nextIdx") != null
         ? "<a href=\"?query=%s&fromIdx=%s\"><button type=\"button\" class=\"btn btn-primary\">Next</button></a>".formatted(
         URLEncoder.encode(query, StandardCharsets.UTF_8), fetchedMetadata.get("nextIdx")) : "");
@@ -203,35 +204,39 @@ public class Main {
         if (pageBytes == null) {
           return null;
         }
+        Pattern keywords = Pattern.compile(tokenizedQuery.stream()
+          .map(s -> s.startsWith("\"") && s.endsWith("\"") ? s.replaceAll("^\"|\"$", "") : s)
+          .collect(Collectors.joining("|")), Pattern.CASE_INSENSITIVE);
         String page = new String(pageBytes);
-        Pattern title = Pattern.compile("<title.*?>(.*)</\\s*?title\\s*?>", Pattern.DOTALL);
+        Pattern title = Pattern.compile("<title.*?>(.*)</\\s*?title\\s*?>",
+          Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
         Matcher titleMatcher = title.matcher(page);
         if (titleMatcher.find()) {
           String ttl = titleMatcher.group(1);
-          entry.put("title", !ttl.isBlank() ? ttl : "untitled page");
+          entry.put("title",
+            !ttl.isBlank() ? ttl.replaceAll("(?i)" + keywords.pattern(), "<b>$0</b>")
+              : "untitled page");
         } else {
           entry.put("title", "untitled page");
         }
         Pattern metaDesc = Pattern.compile(
           "<meta\\s+name=\"description\"\\s+content=(\"(?:\\Q\\\"\\E|[^\"]*)\"|'.*')\\s+/?>(?:</meta>)?",
-          Pattern.DOTALL);
+          Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
         Matcher descMatcher = metaDesc.matcher(page);
         if (descMatcher.find()) {
           entry.put("description", descMatcher.group(1));
         } else {
-          Pattern body = Pattern.compile("<body.*?>(.*)</\\s*body\\s*>", Pattern.DOTALL);
+          Pattern body = Pattern.compile("<body.*?>(.*)</\\s*body\\s*>",
+            Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
           Matcher pageMatcher = body.matcher(page);
           if (pageMatcher.find()) {
             String bodyText = pageMatcher.group(1);
             String innerText = bodyText.replaceAll("(?s)<.*?>", " ").replaceAll("\\s+", " ");
-            Pattern keywords = Pattern.compile(tokenizedQuery.stream()
-              .map(s -> s.startsWith("\"") && s.endsWith("\"") ? s.replaceAll("^\"|\"$", "") : s)
-              .collect(Collectors.joining("|")));
             Matcher kwMatcher = keywords.matcher(innerText);
             int startIdx = kwMatcher.find() ? Math.max(0, kwMatcher.start() - 64) : 0;
             entry.put("description", ((startIdx > 0 ? "..." : "") + innerText.substring(startIdx,
-              Math.min(innerText.length(), startIdx + 1024)) + "...").replaceAll(keywords.pattern(),
-              "<b>$0</b>"));
+              Math.min(innerText.length(), startIdx + 1024)) + "...").replaceAll(
+              "(?i)" + keywords.pattern(), "<b>$0</b>"));
           } else {
             entry.put("description", "not available");
           }

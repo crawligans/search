@@ -56,10 +56,9 @@ public class Job {
     if (!kvsMaster.existsRow("cached", queryKey)) {
       FlameRDD queryTokens = ctx.parallelize(tokenizedQuery);
       FlamePairRDD queryPagesPairs = queryTokens.flatMapToPair(
-        q -> () -> getIndex(q, ctx.getKVS()).map(l -> {
-          int colIdx = l.lastIndexOf(':');
-          return new FlamePair(q, l.substring(0, colIdx));
-        }).iterator());
+        q -> () -> getIndex(q, ctx.getKVS()).flatMap(
+          l -> Arrays.stream(q.replaceAll("^\"|\"$", " ").split("\\s+"))
+            .map(w -> new FlamePair(w, l.substring(0, l.lastIndexOf(':'))))).iterator());
       queryTokens.drop();
       FlamePairRDD tfIdf = queryPagesPairs.flatMapToPair(p -> {
         KVSClient kvs = ctx.getKVS();
@@ -131,10 +130,12 @@ public class Job {
   private static Stream<String> getIndex(String keyword, KVSClient kvsClient) {
     if (keyword.matches("^\".*\"$")) {
       String kw = keyword.replaceAll("^\"|\"$", "");
+      Pattern kwPatttern = Pattern.compile(Pattern.quote(kw), Pattern.CASE_INSENSITIVE);
+      System.out.println(kw);
       return Arrays.stream(kw.split("\\s+")).map(String::translateEscapes)
         .flatMap(w -> getIndex(w, kvsClient)).filter(
-          url -> Pattern.compile(Pattern.quote(kw), Pattern.CASE_INSENSITIVE)
-            .matcher(getPage(url.replaceAll(":(?:\\d*\\s*)*$", ""), kvsClient)).find());
+          url -> kwPatttern.matcher(getPage(url.replaceAll(":(?:\\d*\\s*)*$", ""), kvsClient))
+            .find()).distinct();
     }
     try {
       Row entry = kvsClient.getRow("index", stem(keyword));
