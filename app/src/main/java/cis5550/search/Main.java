@@ -10,7 +10,6 @@ import cis5550.tools.Hasher;
 import cis5550.webserver.Response.Status;
 import cis5550.webserver.Server;
 import com.google.gson.Gson;
-
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -74,9 +73,9 @@ public class Main {
       String spellcheckedQuery = null;
       try {
         spellcheckedQuery = spellChecker.fixSpelling(query);
-          if (spellcheckedQuery.trim().equals(query.trim())) {
-            spellcheckedQuery = null;
-          }
+        if (spellcheckedQuery.trim().equals(query.trim())) {
+          spellcheckedQuery = null;
+        }
         FlameSubmit.submit(flame,
           Job.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath(),
           Job.class.getName(), new String[]{query});
@@ -84,6 +83,7 @@ public class Main {
         e.printStackTrace();
       }
       int limit = 50;
+      int total = kvs.count(queryKey);
       List<Row> results = stream(((Iterable<Row>) () -> {
         try {
           return kvs.scan(queryKey, String.valueOf(fromIdx), null);
@@ -96,7 +96,7 @@ public class Main {
         nextIdx = results.get(results.size() - 1).key();
       }
       Map<String, Object> resultMetadata = toJsonResponse(
-        results.stream().limit(limit).map(r -> r.get("url")), fromIdx, nextIdx, kvs);
+        results.stream().limit(limit).map(r -> r.get("url")), fromIdx, nextIdx, total, kvs);
       if ("json".equalsIgnoreCase(format)) {
         return new Gson().toJson(resultMetadata);
       } else {
@@ -106,10 +106,9 @@ public class Main {
   }
 
   private static String buildPage(String query, Map<String, Object> fetchedMetadata, String spellcheckedQuery) {
-    String correctedQuery = "";
-    if (spellcheckedQuery != null)
-      correctedQuery = String.format("<p><em>Did you mean</em> <a href=\"/search?query=%s\">%s</a> ?</p>",
-        URLEncoder.encode(spellcheckedQuery), spellcheckedQuery);
+    String correctedQuery = spellcheckedQuery == null ? ""
+      : "<p><em>Did you mean</em> <a href=\"/search?query=%s\">%s</a> ?</p>".formatted(
+        URLEncoder.encode(spellcheckedQuery, StandardCharsets.UTF_8), spellcheckedQuery);
     return """
       <!doctype html>
       <html class="no-js" lang="">
@@ -120,16 +119,16 @@ public class Main {
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css"
-              rel="stylesheet"
-              integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ"
-              crossorigin="anonymous">
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"
-                integrity="sha384-ENjdO4Dr2bkBIFxQpeoTz1HIcje39Wm4jDKdf19U8gI4ddQ3GYNS7NTKfAdVQSZe"
-                crossorigin="anonymous"></script>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.4/font/bootstrap-icons.css">
-        <meta property="og:title" content="">
-        <meta property="og:type" content="">
-        <meta property="og:url" content="">
+         rel="stylesheet"
+         integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ"
+         crossorigin="anonymous">
+         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"
+                 integrity="sha384-ENjdO4Dr2bkBIFxQpeoTz1HIcje39Wm4jDKdf19U8gI4ddQ3GYNS7NTKfAdVQSZe"
+                 crossorigin="anonymous"></script>
+         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.4/font/bootstrap-icons.css">
+         <meta property="og:title" content="">
+         <meta property="og:type" content="">
+         <meta property="og:url" content="">
         <meta property="og:image" content="">
 
         <link rel="manifest" href="site.webmanifest">
@@ -153,7 +152,7 @@ public class Main {
             <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i></button>
           </div>
         </form>
-        <div class="vstack gap-sm-2">"""+correctedQuery+"""
+        <div class="vstack gap-sm-2">%s
           %s
         </div>
         <div class="btn-group" role="group" aria-label="Page Navigation" style="margin-top: 16pt; display: flex">
@@ -169,7 +168,7 @@ public class Main {
       </body>
 
       </html>
-      """.formatted(query,
+      """.formatted(query, correctedQuery,
       ((List<Map<String, String>>) fetchedMetadata.get("results")).stream().map(entry -> """
           <div>
             <div class="position-relative">
@@ -183,18 +182,19 @@ public class Main {
         entry.get("description"))).collect(Collectors.joining("\n")),
       ((int) fetchedMetadata.get("fromIdx")) > 0
         ? "<a><button type=\"button\" onclick=\"history.back()\" class=\"btn btn-secondary\">Back</button></a>"
-        : "",
-      "Showing Results %d-%d".formatted((int) fetchedMetadata.get("fromIdx") + 1, Integer.parseInt(
-        (String) fetchedMetadata.get("nextIdx"))), fetchedMetadata.get("nextIdx") != null
+        : "", "Showing Results %d-%d of %d".formatted((int) fetchedMetadata.get("fromIdx") + 1,
+        Integer.parseInt((String) Objects.requireNonNullElse(fetchedMetadata.get("nextIdx"), "0")),
+        (int) fetchedMetadata.get("totalCount")), fetchedMetadata.get("nextIdx") != null
         ? "<a href=\"?query=%s&fromIdx=%s\"><button type=\"button\" class=\"btn btn-primary\">Next</button></a>".formatted(
         URLEncoder.encode(query, StandardCharsets.UTF_8), fetchedMetadata.get("nextIdx")) : "");
   }
 
   private static Map<String, Object> toJsonResponse(Stream<String> urls, int fromIdx,
-    String nextIdx, KVSClient kvs) {
+    String nextIdx, int totalCount, KVSClient kvs) {
     Map<String, Object> resp = new HashMap<>();
     resp.put("fromIdx", fromIdx);
     resp.put("nextIdx", nextIdx);
+    resp.put("totalCount", totalCount);
     resp.put("results", urls.map(url -> {
       Map<String, String> entry = new HashMap<>();
       entry.put("url", url);
