@@ -67,7 +67,9 @@ public class Job {
         int maxTf = tf.columns().stream().filter(Predicate.not("__url"::equals)).map(tf::get)
           .map(Integer::parseInt).max(Integer::compare).orElse(0); // should not be 0
         int tfTok = Integer.parseInt(Objects.requireNonNullElse(tf.get(p._1()), "0"));
-        double idf = Double.parseDouble(new String(kvs.get("IDF", p._1(), "IDF")));
+        double idf = Double.parseDouble(new String(
+          Objects.requireNonNullElse(kvs.get("IDF", p._1(), "IDF"),
+            "0.0".getBytes(StandardCharsets.UTF_8))));
         return Collections.singleton(
           new FlamePair(p._2(), String.valueOf((a + (1 - a) * tfTok / maxTf) * idf)));
       });
