@@ -63,6 +63,7 @@ public class Job {
       FlamePairRDD tfIdf = queryPagesPairs.flatMapToPair(p -> {
         KVSClient kvs = ctx.getKVS();
         Row tf = kvs.getRow("TF", Hasher.hash(p._2()));
+        if (tf == null) return Collections::emptyIterator;
         int maxTf = tf.columns().stream().filter(Predicate.not("__url"::equals)).map(tf::get)
           .map(Integer::parseInt).max(Integer::compare).orElse(0); // should not be 0
         int tfTok = Integer.parseInt(Objects.requireNonNullElse(tf.get(p._1()), "0"));
